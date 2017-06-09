@@ -43,6 +43,7 @@
 #include <sys/syscall.h>
 #include <stdlib.h>
 #include <cutils/properties.h>
+#include <dirent.h>
 
 #define  LOG_TAG    "lights.odroid"
 /* Set to 1 to enable debug messages to the log */
@@ -56,10 +57,6 @@
 #define  LOGW(...)  __android_log_print(ANDROID_LOG_WARN,LOG_TAG,__VA_ARGS__)
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
 
-#define BACKLIGHT "/sys/devices/platform/pwm-ctrl/duty0"
-#define BACKLIGHT_EN "/sys/devices/platform/pwm-ctrl/enable0"
-#define BACKLIGHT_FREQ "/sys/devices/platform/pwm-ctrl/freq0"
-
 #define init_module(mod, len, opts) syscall(__NR_init_module, mod, len, opts)
 #define delete_module(name, flags) syscall(__NR_delete_module, name, flags)
 
@@ -70,6 +67,10 @@
 
 static pthread_once_t g_init = PTHREAD_ONCE_INIT;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+
+char backlight[64] = {'\0', };
+char backlight_en[64] = {'\0', };
+char backlight_freq[64] = {'\0', };;
 
 char * env_backlight;
 bool invert, enable;
@@ -117,16 +118,31 @@ void init_globals(void)
 
         free(image);
 
+        DIR *dp = NULL;
+        struct dirent *ep = NULL;
+        dp = opendir("/sys/devices/");
+        if (dp != NULL) {
+            while (ep = readdir(dp)) {
+                if (strncmp(ep->d_name, "pwm-ctrl.", 9) == 0) {
+                    sprintf(backlight, "/sys/devices/%s/duty0", ep->d_name);
+                    sprintf(backlight_en, "/sys/devices/%s/enable0", ep->d_name);
+                    sprintf(backlight_freq, "/sys/devices/%s/freq0", ep->d_name);
+                    break;
+                }
+            }
+        }
+        closedir(dp);
+
         char value[20];
         int nwr, ret;
-        fd = open(BACKLIGHT_FREQ, O_RDWR);
+        fd = open(backlight_freq, O_RDWR);
         if (fd > 0) {
             nwr = sprintf(value, "%d\n", 1000);
             ret = write(fd, value, nwr);
             close(fd);
         }
 
-        fd = open(BACKLIGHT_EN, O_RDWR);
+        fd = open(backlight_en, O_RDWR);
         if (fd > 0) {
             nwr = sprintf(value, "%d\n", 1);
             ret = write(fd, value, nwr);
@@ -165,7 +181,7 @@ set_light_backlight( struct light_device_t* dev, struct light_state_t const* sta
             light_level = 1023;
     }
 
-    fd = open(BACKLIGHT, O_RDWR);
+    fd = open(backlight, O_RDWR);
     if (fd > 0) {
         nwr = sprintf(value, "%d\n", light_level);
         ret = write(fd, value, nwr);
