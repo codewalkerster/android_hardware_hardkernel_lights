@@ -153,16 +153,13 @@ set_light_backlight( struct light_device_t* dev, struct light_state_t const* sta
 
     pthread_mutex_lock(&g_lock);
     light_level = state->color&0xff;
-    light_level = light_level << 2;
     if (invert) {
-        light_level = 1023 - light_level;
-        if (light_level >= 280)
-            light_level -= 280;
+        //ODROID-VU8: Avaiable PWM range 700 ~ 0
+        light_level = (int)(light_level * 2.85);
+        light_level = 726 - light_level;
     } else {
-        if (light_level < 1024)
-            light_level += 40;
-        if (light_level > 1023)
-            light_level = 1023;
+        //ODROID-7Plus: Avaiable PWM range 80 ~ 1023
+        light_level = (int)(light_level * 3.84);
     }
 
     fd = open(BACKLIGHT, O_RDWR);
