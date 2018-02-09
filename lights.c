@@ -254,7 +254,8 @@ open_lights( const struct hw_module_t* module, char const *name,
         return -EINVAL;
     }
 
-    pthread_once(&g_init, init_globals);
+    if (enable)
+        pthread_once(&g_init, init_globals);
 
     struct light_device_t *dev = malloc( sizeof(struct light_device_t) );
     if (dev == NULL) {
