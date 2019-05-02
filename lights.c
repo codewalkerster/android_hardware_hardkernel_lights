@@ -63,16 +63,22 @@
 #define BACKLIGHT_PWM          "backlight_pwm"
 #define BACKLIGHT_PWM_YES          "yes"
 #define BACKLIGHT_PWM_NO           "no"
+#define BACKLIGHT_PWM_INV          "invert"
 
 static pthread_once_t g_init = PTHREAD_ONCE_INIT;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
-char backlight_en[64] = "/sys/class/pwm/pwmchip1/pwm0/enable";
-char backlight_period[64] = "/sys/class/pwm/pwmchip1/pwm0/period";
-char backlight_duty_cycle[64] = "/sys/class/pwm/pwmchip1/pwm0/duty_cycle";
+char backlight_control[64] = "/sys/class/gpio/export";
+char backlight_gpio491[64] = "/sys/class/gpio/gpio491/direction";
+char backlight_export[64] = "/sys/class/pwm/pwmchip4/export";
+char backlight_unexport[64] = "/sys/class/pwm/pwmchip4/unexport";
+char backlight_en[64] = "/sys/class/pwm/pwmchip4/pwm0/enable";
+char backlight_period[64] = "/sys/class/pwm/pwmchip4/pwm0/period";
+char backlight_duty_cycle[64] = "/sys/class/pwm/pwmchip4/pwm0/duty_cycle";
+
 
 char * env_backlight;
-bool enable;
+bool invert, enable;
 
 void init_globals(void)
 {
@@ -81,14 +87,31 @@ void init_globals(void)
     // init the mutex
     pthread_mutex_init(&g_lock, NULL);
 
-    property_set("ctl.start", "backlight");
+    char value[20];
+    int nwr, ret, fd;
 
-    sleep(1);
+    if (invert) {
+        // VU8C
+        fd = open(backlight_control, O_RDWR);
+        if (fd > 0) {
+            ret = write(fd, "491", 3);
+            close(fd);
+        }
+        sleep(1);
+        fd = open(backlight_gpio491, O_RDWR);
+        if (fd > 0) {
+            ret = write(fd, "out", 3);
+            close(fd);
+        }
+        LOGD("enable backlight for ODROID-VU8");
+    }
 
     if (enable) {
-
-        char value[20];
-        int nwr, ret, fd;
+        fd = open(backlight_export, O_WRONLY);
+        if (fd > 0) {
+            ret = write(fd, "0", 1);
+            close(fd);
+        }
         fd = open(backlight_period, O_RDWR);
         if (fd > 0) {
             nwr = sprintf(value, "%d\n", 1000000);
@@ -106,12 +129,6 @@ void init_globals(void)
     LOGD( "leaving  %s", __FUNCTION__ );
 }
 
-static int
-is_lit(struct light_state_t const* state)
-{
-    return state->color & 0x00ffffff;
-}
-
 /* set backlight brightness by LIGHTS_SERVICE_NAME service. */
 static int
 set_light_backlight( struct light_device_t* dev, struct light_state_t const* state )
@@ -122,9 +139,16 @@ set_light_backlight( struct light_device_t* dev, struct light_state_t const* sta
     int light_level;
 
     pthread_mutex_lock(&g_lock);
-    light_level = state->color & 0xff;
-    //ODROID-7Plus: Avaiable PWM range 100000 ~ 1000000
-    light_level = 100000 * ((int)(light_level / 27.2) + 1);
+    light_level = state->color&0xff;
+    //light_level range 10 ~ 255
+    if (invert) {
+        //ODROID-VU8: Avaiable PWM range 1000000 ~ 100000
+        light_level = (int)(light_level * 3674);
+        light_level = 1000000 - light_level;
+    } else {
+        //ODROID-VU other: Avaiable PWM range 100000 ~ 1000000
+        light_level = (int)(light_level * 3674);
+    }
     LOGD("light_level = %d", light_level);
 
     fd = open(backlight_duty_cycle, O_RDWR);
@@ -187,7 +211,12 @@ close_lights( struct light_device_t *dev )
 {
     free( dev );
 
-    property_set("ctl.start", "backlight");
+    int ret, fd;
+    fd = open(backlight_unexport, O_RDWR);
+    if (fd > 0) {
+        ret = write(fd, "0", 1);
+        close(fd);
+    }
 
     return 0;
 }
@@ -208,7 +237,6 @@ open_lights( const struct hw_module_t* module, char const *name,
         FILE * fp;
         char * line = NULL;
         char * list;
-        char * value;
         size_t len = 0;
 
         fp = fopen("/proc/cmdline", "r");
@@ -227,6 +255,7 @@ open_lights( const struct hw_module_t* module, char const *name,
             }
         }
         enable = false;
+        invert = false;
         if (env_backlight != NULL) {
             LOGD("backlight_pwm : %s", env_backlight);
 
@@ -235,6 +264,9 @@ open_lights( const struct hw_module_t* module, char const *name,
             } else if (0 == strncmp( BACKLIGHT_PWM_NO, env_backlight, 2 )) {
                 //enable = false;
                 //return -EINVAL;
+            } else if (0 == strncmp( BACKLIGHT_PWM_INV, env_backlight, 6 )) {
+                enable = true;
+                invert = true;
             } else {
                 enable = false;
             }

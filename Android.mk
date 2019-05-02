@@ -20,7 +20,15 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := lights.c
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE_RELATIVE_PATH := hw
+LOCAL_C_INCLUDES += \
+	hardware/libhardware/include \
+	system/core/libcutils/include \
+	system/core/libsystem/include
+LOCAL_CFLAGS := -Wno-unused-parameter
 LOCAL_SHARED_LIBRARIES := liblog libcutils
 LOCAL_MODULE := lights.$(TARGET_PRODUCT)
 LOCAL_MODULE_TAGS := optional
+ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 26 && echo OK),OK)
+LOCAL_PROPRIETARY_MODULE := true
+endif
 include $(BUILD_SHARED_LIBRARY)
