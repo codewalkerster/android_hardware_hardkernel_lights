@@ -142,9 +142,9 @@ set_light_backlight( struct light_device_t* dev, struct light_state_t const* sta
     light_level = state->color&0xff;
     //light_level range 10 ~ 255
     if (invert) {
-        //ODROID-VU8: Avaiable PWM range 1000000 ~ 100000
-        light_level = (int)(light_level * 3674);
-        light_level = 1000000 - light_level;
+        //ODROID-VU8: Avaiable PWM range 700000 ~ 100000
+        light_level = (int)(light_level * 2362);
+        light_level = 700000 - light_level;
     } else {
         //ODROID-VU other: Avaiable PWM range 100000 ~ 1000000
         light_level = (int)(light_level * 3674);
