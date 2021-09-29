@@ -70,11 +70,19 @@ static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 char backlight_control[64] = "/sys/class/gpio/export";
 char backlight_gpio491[64] = "/sys/class/gpio/gpio491/direction";
+#ifdef odroidn2
 char backlight_export[64] = "/sys/class/pwm/pwmchip4/export";
 char backlight_unexport[64] = "/sys/class/pwm/pwmchip4/unexport";
 char backlight_en[64] = "/sys/class/pwm/pwmchip4/pwm0/enable";
 char backlight_period[64] = "/sys/class/pwm/pwmchip4/pwm0/period";
 char backlight_duty_cycle[64] = "/sys/class/pwm/pwmchip4/pwm0/duty_cycle";
+#else
+char backlight_export[64] = "/sys/class/pwm/pwmchip0/export";
+char backlight_unexport[64] = "/sys/class/pwm/pwmchip0/unexport";
+char backlight_en[64] = "/sys/class/pwm/pwmchip0/pwm0/enable";
+char backlight_period[64] = "/sys/class/pwm/pwmchip0/pwm0/period";
+char backlight_duty_cycle[64] = "/sys/class/pwm/pwmchip0/pwm0/duty_cycle";
+#endif
 
 
 char * env_backlight;

@@ -24,7 +24,7 @@ LOCAL_C_INCLUDES += \
 	hardware/libhardware/include \
 	system/core/libcutils/include \
 	system/core/libsystem/include
-LOCAL_CFLAGS := -Wno-unused-parameter
+LOCAL_CFLAGS := -Wno-unused-parameter -D$(TARGET_PRODUCT)
 LOCAL_SHARED_LIBRARIES := liblog libcutils
 LOCAL_MODULE := lights.$(TARGET_PRODUCT)
 LOCAL_MODULE_TAGS := optional
