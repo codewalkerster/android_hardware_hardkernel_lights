@@ -60,33 +60,10 @@
 #define init_module(mod, len, opts) syscall(__NR_init_module, mod, len, opts)
 #define delete_module(name, flags) syscall(__NR_delete_module, name, flags)
 
-#define BACKLIGHT_PWM          "backlight_pwm"
-#define BACKLIGHT_PWM_YES          "yes"
-#define BACKLIGHT_PWM_NO           "no"
-#define BACKLIGHT_PWM_INV          "invert"
-
 static pthread_once_t g_init = PTHREAD_ONCE_INIT;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
-char backlight_control[64] = "/sys/class/gpio/export";
-char backlight_gpio491[64] = "/sys/class/gpio/gpio491/direction";
-#ifdef odroidn2
-char backlight_export[64] = "/sys/class/pwm/pwmchip4/export";
-char backlight_unexport[64] = "/sys/class/pwm/pwmchip4/unexport";
-char backlight_en[64] = "/sys/class/pwm/pwmchip4/pwm0/enable";
-char backlight_period[64] = "/sys/class/pwm/pwmchip4/pwm0/period";
-char backlight_duty_cycle[64] = "/sys/class/pwm/pwmchip4/pwm0/duty_cycle";
-#else
-char backlight_export[64] = "/sys/class/pwm/pwmchip0/export";
-char backlight_unexport[64] = "/sys/class/pwm/pwmchip0/unexport";
-char backlight_en[64] = "/sys/class/pwm/pwmchip0/pwm0/enable";
-char backlight_period[64] = "/sys/class/pwm/pwmchip0/pwm0/period";
-char backlight_duty_cycle[64] = "/sys/class/pwm/pwmchip0/pwm0/duty_cycle";
-#endif
-
-
-char * env_backlight;
-bool invert, enable;
+char brightness[64] = "/sys/class/backlight/backlight/brightness";
 
 void init_globals(void)
 {
@@ -95,45 +72,6 @@ void init_globals(void)
     // init the mutex
     pthread_mutex_init(&g_lock, NULL);
 
-    char value[20];
-    int nwr, ret, fd;
-
-    if (invert) {
-        // VU8C
-        fd = open(backlight_control, O_RDWR);
-        if (fd > 0) {
-            ret = write(fd, "491", 3);
-            close(fd);
-        }
-        sleep(1);
-        fd = open(backlight_gpio491, O_RDWR);
-        if (fd > 0) {
-            ret = write(fd, "out", 3);
-            close(fd);
-        }
-        LOGD("enable backlight for ODROID-VU8");
-    }
-
-    if (enable) {
-        fd = open(backlight_export, O_WRONLY);
-        if (fd > 0) {
-            ret = write(fd, "0", 1);
-            close(fd);
-        }
-        fd = open(backlight_period, O_RDWR);
-        if (fd > 0) {
-            nwr = sprintf(value, "%d\n", 1000000);
-            ret = write(fd, value, nwr);
-            close(fd);
-        }
-
-        fd = open(backlight_en, O_RDWR);
-        if (fd > 0) {
-            nwr = sprintf(value, "%d\n", 1);
-            ret = write(fd, value, nwr);
-            close(fd);
-        }
-    }
     LOGD( "leaving  %s", __FUNCTION__ );
 }
 
@@ -148,18 +86,9 @@ set_light_backlight( struct light_device_t* dev, struct light_state_t const* sta
 
     pthread_mutex_lock(&g_lock);
     light_level = state->color&0xff;
-    //light_level range 10 ~ 255
-    if (invert) {
-        //ODROID-VU8: Avaiable PWM range 700000 ~ 100000
-        light_level = (int)(light_level * 2362);
-        light_level = 700000 - light_level;
-    } else {
-        //ODROID-VU other: Avaiable PWM range 100000 ~ 1000000
-        light_level = (int)(light_level * 3674);
-    }
     LOGD("light_level = %d", light_level);
 
-    fd = open(backlight_duty_cycle, O_RDWR);
+    fd = open(brightness, O_RDWR);
     if (fd > 0) {
         nwr = sprintf(value, "%d\n", light_level);
         ret = write(fd, value, nwr);
@@ -219,13 +148,6 @@ close_lights( struct light_device_t *dev )
 {
     free( dev );
 
-    int ret, fd;
-    fd = open(backlight_unexport, O_RDWR);
-    if (fd > 0) {
-        ret = write(fd, "0", 1);
-        close(fd);
-    }
-
     return 0;
 }
 /**
@@ -239,46 +161,11 @@ open_lights( const struct hw_module_t* module, char const *name,
     void* set_light;
 
     if (0 == strcmp( LIGHT_ID_BACKLIGHT, name )) {
+        if ( access ("/sys/class/backlight/backlight/brightness", F_OK) != 0 ) {
+            LOGD( "%s: %s light isn't supported yet.", __FUNCTION__, name );
+            return -EINVAL;
+        }
         set_light = set_light_backlight;
-
-        //check the bootargs for backlight_pwm
-        FILE * fp;
-        char * line = NULL;
-        char * list;
-        size_t len = 0;
-
-        fp = fopen("/proc/cmdline", "r");
-        if (fp != NULL) {
-            getline(&line, &len, fp);
-            list = strtok (line, " ");
-            while (list != NULL)
-            {
-                LOGD ("%s\n",list);
-                if (0 == strncmp(BACKLIGHT_PWM, list, 13)) {
-                    env_backlight = strtok(list, "=");
-                    env_backlight = strtok(NULL, "=");
-                    break;
-                }
-                list = strtok (NULL, " ");
-            }
-        }
-        enable = false;
-        invert = false;
-        if (env_backlight != NULL) {
-            LOGD("backlight_pwm : %s", env_backlight);
-
-            if (0 == strncmp( BACKLIGHT_PWM_YES, env_backlight, 3 )) {
-                enable = true;
-            } else if (0 == strncmp( BACKLIGHT_PWM_NO, env_backlight, 2 )) {
-                //enable = false;
-                //return -EINVAL;
-            } else if (0 == strncmp( BACKLIGHT_PWM_INV, env_backlight, 6 )) {
-                enable = true;
-                invert = true;
-            } else {
-                enable = false;
-            }
-        }
     } else if (0 == strcmp( LIGHT_ID_KEYBOARD, name )) {
         set_light = set_light_keyboard;
     } else if (0 == strcmp( LIGHT_ID_BUTTONS, name )) {
@@ -294,8 +181,7 @@ open_lights( const struct hw_module_t* module, char const *name,
         return -EINVAL;
     }
 
-    if (enable)
-        pthread_once(&g_init, init_globals);
+    pthread_once(&g_init, init_globals);
 
     struct light_device_t *dev = malloc( sizeof(struct light_device_t) );
     if (dev == NULL) {
